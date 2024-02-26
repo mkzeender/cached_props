@@ -1,5 +1,5 @@
 import time
-from condition_cache import property_watches
+from property_watches import property_watches
 
 
 class Example:
@@ -28,6 +28,8 @@ class Example:
 
 
 ex = Example()
+
+print(Example.expensive)
 
 print(ex.expensive)
 print(ex.expensive)  # calculates only once

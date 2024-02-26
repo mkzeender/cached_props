@@ -3,14 +3,13 @@ from abc import ABC, abstractmethod
 from typing import (
     Callable,
     Generic,
-    Iterable,
-    Literal,
     Protocol,
+    Self,
     TypeVar,
+    overload,
     runtime_checkable,
+    Any,
 )
-
-from pyparsing import Any
 
 
 @runtime_checkable
@@ -99,14 +98,27 @@ class CachedWatcher(Generic[PropT]):
         self.watchlist = watchlist
         self.func = func
 
-    def __set_name__(self, owner, name):
+    def __set_name__(self, owner: type, name: str):
         self.name = name
+        self.qualname = owner.__qualname__ + "." + name
         self.private_name = "_auto_cached_" + name
 
+        try:
+            self.func.__set_name__(owner, name)
+        except AttributeError:
+            pass
+
+        # we now have a reference to the owner class, so we add subscriptions here!
         for attr_name in self.watchlist:
             self.add_subscription(attr_name, owner)
 
-    def __get__(self, obj, objtype=None) -> PropT:
+    @overload
+    def __get__(self, obj: None, objtype: type) -> Self: ...
+    @overload
+    def __get__(self, obj, objtype=None) -> PropT: ...
+    def __get__(self, obj, objtype=None):
+        if obj is None:
+            return self
         try:
             val = getattr(obj, self.private_name)
         except AttributeError:
@@ -127,19 +139,23 @@ class CachedWatcher(Generic[PropT]):
             for other_name in cls_var.watchlist:
                 self.add_subscription(other_name, owner_cls)
             return
-        elif isinstance(cls_var, BaseWatchedDescriptor):
+        if isinstance(cls_var, BaseWatchedDescriptor):
             cls_var.subscribe(self)
             return
-        else:
-            wrapper = BaseWatchedDescriptor.from_classvar(name, cls_var)
-            wrapper.subscribe(self)
-            setattr(owner_cls, name, wrapper)
+
+        # implicitly wraps the attribute in a descriptor
+        wrapper = BaseWatchedDescriptor.from_classvar(name, cls_var)
+        wrapper.subscribe(self)
+        setattr(owner_cls, name, wrapper)
 
     def invalidate_cache(self, obj):
         try:
             delattr(obj, self.private_name)
         except AttributeError:
             pass
+
+    def __repr__(self):
+        return f"<CachedWatcher '{self.qualname}'>"
 
 
 # PropFunc = TypeVar('PropFunc', bound=Callable[[Any], Any])
